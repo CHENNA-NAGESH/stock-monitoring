@@ -2,17 +2,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: atrium
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - atrium.example.com
-      secretName: atrium-tls
   rules:
-    - host: atrium.example.com
-      http:
+    - http:
         paths:
           - path: /api
             pathType: Prefix

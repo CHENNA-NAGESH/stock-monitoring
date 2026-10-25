@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis
+  labels:
+    app: redis
 spec:
   replicas: 1
   selector:
@@ -18,26 +20,23 @@ spec:
           imagePullPolicy: IfNotPresent
           args: ["redis-server", "--save", "", "--appendonly", "no"]
           ports:
-            - name: redis
-              containerPort: 6379
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
+            - containerPort: 6379
           readinessProbe:
             exec:
               command: ["redis-cli", "ping"]
+            initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             exec:
               command: ["redis-cli", "ping"]
+            initialDelaySeconds: 10
             periodSeconds: 20
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
-              cpu: 200m
+              cpu: 250m
               memory: 128Mi
 ---
 apiVersion: v1
@@ -50,4 +49,4 @@ spec:
   ports:
     - name: redis
       port: 6379
-      targetPort: redis
+      targetPort: 6379

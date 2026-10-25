@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: postgres
+  labels:
+    app: postgres
 spec:
   serviceName: postgres
   replicas: 1
@@ -18,8 +20,7 @@ spec:
           image: postgres:16-alpine
           imagePullPolicy: IfNotPresent
           ports:
-            - name: postgres
-              containerPort: 5432
+            - containerPort: 5432
           env:
             - name: POSTGRES_USER
               value: atrium
@@ -32,28 +33,23 @@ spec:
                   key: POSTGRES_PASSWORD
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
-          securityContext:
-            allowPrivilegeEscalation: false
           readinessProbe:
             exec:
               command: ["pg_isready", "-U", "atrium", "-d", "atrium"]
+            initialDelaySeconds: 5
             periodSeconds: 10
           livenessProbe:
             exec:
               command: ["pg_isready", "-U", "atrium", "-d", "atrium"]
+            initialDelaySeconds: 10
             periodSeconds: 20
-          startupProbe:
-            exec:
-              command: ["pg_isready", "-U", "atrium", "-d", "atrium"]
-            periodSeconds: 2
-            failureThreshold: 30
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 50m
+              memory: 128Mi
             limits:
-              cpu: 500m
-              memory: 512Mi
+              cpu: 250m
+              memory: 256Mi
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -76,4 +72,4 @@ spec:
   ports:
     - name: postgres
       port: 5432
-      targetPort: postgres
+      targetPort: 5432
