@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: atrium-config
+data:
+  HOST: "0.0.0.0"
+  STALE_AFTER_SECONDS: "30"
+  VENDOR_MODE: simulator

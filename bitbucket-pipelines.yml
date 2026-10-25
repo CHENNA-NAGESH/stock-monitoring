@@ -1,0 +1,93 @@
+image: node:22
+
+definitions:
+  services:
+    docker:
+      memory: 3072
+  steps:
+    - step: &verify
+        name: Verify
+        caches: [node]
+        script:
+          - npm ci
+          - npm run typecheck
+          - npm test
+          - npm run build
+
+pipelines:
+  pull-requests:
+    "**":
+      - step: *verify
+      - step:
+          name: Build images
+          services: [docker]
+          size: 2x
+          script:
+            - docker build -f apps/web/Dockerfile -t atrium-web:$BITBUCKET_COMMIT .
+            - docker build -f apps/api/Dockerfile -t atrium-api:$BITBUCKET_COMMIT .
+            - docker build -f apps/worker/Dockerfile -t atrium-worker:$BITBUCKET_COMMIT .
+  branches:
+    main:
+      - step: *verify
+      - step:
+          name: Publish and deploy staging
+          deployment: staging
+          services: [docker]
+          size: 2x
+          script:
+            - |
+              if [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ] || [ -z "$KUBE_CONFIG" ] || [ -z "$DATABASE_URL" ] || [ -z "$REDIS_URL" ] || [ -z "$POSTGRES_PASSWORD" ]; then
+                echo "Staging needs DOCKER_REGISTRY, DOCKER_USERNAME, DOCKER_PASSWORD, KUBE_CONFIG, DATABASE_URL, REDIS_URL, and POSTGRES_PASSWORD."
+                exit 1
+              fi
+            - echo "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
+            - docker build -f apps/web/Dockerfile -t "$DOCKER_REGISTRY/atrium-web:$BITBUCKET_COMMIT" .
+            - docker build -f apps/api/Dockerfile -t "$DOCKER_REGISTRY/atrium-api:$BITBUCKET_COMMIT" .
+            - docker build -f apps/worker/Dockerfile -t "$DOCKER_REGISTRY/atrium-worker:$BITBUCKET_COMMIT" .
+            - docker push "$DOCKER_REGISTRY/atrium-web:$BITBUCKET_COMMIT"
+            - docker push "$DOCKER_REGISTRY/atrium-api:$BITBUCKET_COMMIT"
+            - docker push "$DOCKER_REGISTRY/atrium-worker:$BITBUCKET_COMMIT"
+            - curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.32.2/bin/linux/amd64/kubectl"
+            - chmod +x kubectl
+            - mkdir -p "$HOME/.kube"
+            - printf '%s' "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
+            - ./kubectl create namespace atrium-staging --dry-run=client -o yaml | ./kubectl apply -f -
+            - ./kubectl -n atrium-staging create secret generic atrium-secrets --from-literal=DATABASE_URL="$DATABASE_URL" --from-literal=REDIS_URL="$REDIS_URL" --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" --dry-run=client -o yaml | ./kubectl apply -f -
+            - sed -i "s|REPLACE_REGISTRY|${DOCKER_REGISTRY}|g; s|REPLACE_TAG|${BITBUCKET_COMMIT}|g" deploy/overlays/staging/kustomization.yaml
+            - ./kubectl apply -k deploy/overlays/staging
+            - ./kubectl -n atrium-staging rollout status deployment/atrium-web --timeout=180s
+            - ./kubectl -n atrium-staging rollout status deployment/atrium-api --timeout=180s
+            - ./kubectl -n atrium-staging rollout status deployment/atrium-worker --timeout=180s
+            - ./kubectl -n atrium-staging rollout status statefulset/postgres --timeout=180s
+  custom:
+    promote:
+      - variables:
+          - name: PROMOTE_SHA
+            description: Commit already running in staging
+      - step:
+          name: Promote digest to production
+          deployment: production
+          services: [docker]
+          script:
+            - |
+              if [ -z "$PROMOTE_SHA" ] || [ -z "$DOCKER_REGISTRY" ] || [ -z "$DOCKER_USERNAME" ] || [ -z "$DOCKER_PASSWORD" ] || [ -z "$KUBE_CONFIG" ] || [ -z "$DATABASE_URL" ] || [ -z "$REDIS_URL" ] || [ -z "$POSTGRES_PASSWORD" ]; then
+                echo "Promote needs PROMOTE_SHA, registry credentials, KUBE_CONFIG, DATABASE_URL, REDIS_URL, and POSTGRES_PASSWORD."
+                exit 1
+              fi
+            - printf '%s' "$PROMOTE_SHA" | grep -Eq '^[0-9a-f]{7,40}$'
+            - echo "$DOCKER_PASSWORD" | docker login "$DOCKER_REGISTRY" -u "$DOCKER_USERNAME" --password-stdin
+            - docker manifest inspect "$DOCKER_REGISTRY/atrium-web:$PROMOTE_SHA"
+            - docker manifest inspect "$DOCKER_REGISTRY/atrium-api:$PROMOTE_SHA"
+            - docker manifest inspect "$DOCKER_REGISTRY/atrium-worker:$PROMOTE_SHA"
+            - curl -fsSL -o kubectl "https://dl.k8s.io/release/v1.32.2/bin/linux/amd64/kubectl"
+            - chmod +x kubectl
+            - mkdir -p "$HOME/.kube"
+            - printf '%s' "$KUBE_CONFIG" | base64 -d > "$HOME/.kube/config"
+            - ./kubectl create namespace atrium-prod --dry-run=client -o yaml | ./kubectl apply -f -
+            - ./kubectl -n atrium-prod create secret generic atrium-secrets --from-literal=DATABASE_URL="$DATABASE_URL" --from-literal=REDIS_URL="$REDIS_URL" --from-literal=POSTGRES_PASSWORD="$POSTGRES_PASSWORD" --dry-run=client -o yaml | ./kubectl apply -f -
+            - sed -i "s|REPLACE_REGISTRY|${DOCKER_REGISTRY}|g; s|REPLACE_TAG|${PROMOTE_SHA}|g" deploy/overlays/production/kustomization.yaml
+            - ./kubectl apply -k deploy/overlays/production
+            - ./kubectl -n atrium-prod rollout status deployment/atrium-web --timeout=180s
+            - ./kubectl -n atrium-prod rollout status deployment/atrium-api --timeout=180s
+            - ./kubectl -n atrium-prod rollout status deployment/atrium-worker --timeout=180s
+            - ./kubectl -n atrium-prod rollout status statefulset/postgres --timeout=180s

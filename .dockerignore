@@ -1,0 +1,9 @@
+node_modules
+**/dist
+.data
+.git
+**/*.test.ts
+**/*.test.mjs
+coverage
+*.log
+.DS_Store

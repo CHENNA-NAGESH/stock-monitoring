@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: atrium-staging
+resources:
+  - ../../base
+images:
+  - name: atrium-web
+    newName: REPLACE_REGISTRY/atrium-web
+    newTag: REPLACE_TAG
+  - name: atrium-api
+    newName: REPLACE_REGISTRY/atrium-api
+    newTag: REPLACE_TAG
+  - name: atrium-worker
+    newName: REPLACE_REGISTRY/atrium-worker
+    newTag: REPLACE_TAG
+patches:
+  - path: ingress-host.yaml
+    target:
+      group: networking.k8s.io
+      version: v1
+      kind: Ingress
+      name: atrium
