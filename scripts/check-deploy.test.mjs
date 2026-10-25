@@ -70,7 +70,7 @@ test("kubernetes workloads expose the desk ports and keep probes and limits", ()
   assert.equal(worker.spec.replicas, 1);
   const webService = docs.find((doc) => doc.kind === "Service" && doc.metadata.name === "atrium-web");
   assert.equal(webService.spec.type, "NodePort");
-  assert.equal(webService.spec.ports[0].nodePort, 30080);
+  assert.equal(webService.spec.ports[0].nodePort, 30083);
   const ingress = docs.find((doc) => doc.kind === "Ingress");
   const paths = ingress.spec.rules[0].http.paths.map((path) => path.path);
   assert.deepEqual(paths, ["/api", "/"]);
