@@ -1,5 +1,6 @@
 FROM node:22-alpine AS build
 WORKDIR /app
+ENV REDISMS_DISABLE_POSTINSTALL=1
 COPY package.json package-lock.json ./
 COPY packages packages
 COPY apps apps
